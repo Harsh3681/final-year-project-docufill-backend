@@ -73,4 +73,4 @@ def stream_words():
     return Response(generate_words(), mimetype='text/plain')
 
 if __name__ == '__main__':
-    socketio.run(app,port=5000,allow_unsafe_werkzeug=True,debug=True)
+    socketio.run(app,port=80,allow_unsafe_werkzeug=True,debug=True)
