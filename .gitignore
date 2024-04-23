@@ -2,3 +2,6 @@ venv
 phi-2
 phi2
 __pycache__
+.env
+ieee.py
+xploreapi
