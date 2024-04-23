@@ -1,24 +1,20 @@
 from flask import Flask, Response,request, send_file
 import time
 from flask_cors import CORS
+from peft import PeftModel, PeftConfig
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TextIteratorStreamer
 import torch
 from threading import Thread
 from docx import Document
 import os
-# from docx2pdf import convert
+from docx2pdf import convert
 from PIL import Image
 from io import BytesIO
 from base64 import b64decode
 import requests
 import gc
-from dotenv import load_dotenv
+
 from docx.shared import Inches
-
-
-load_dotenv()
-HF_TOKEN = os.getenv('HF_TOKEN')
-
 
 sections = {
     "Title":0,
@@ -35,15 +31,22 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_quant_type="nf4",
     bnb_4bit_compute_dtype=torch.bfloat16
 )
-
-model = AutoModelForCausalLM.from_pretrained("Shrunoti09/llama2",quantization_config=bnb_config,
+config = PeftConfig.from_pretrained("phi2")
+# print(psutil.virtual_memory().percent)
+# print(psutil.virtual_memory().available * 100 / psutil.virtual_memory().total)
+model = AutoModelForCausalLM.from_pretrained('phi-2',quantization_config=bnb_config,
     device_map={"": 0},
     low_cpu_mem_usage=True,
     trust_remote_code=True)
+# print(psutil.virtual_memory().percent)
+# print(psutil.virtual_memory().available * 100 / psutil.virtual_memory().total)
 
 model.config.use_cache = False
+model = PeftModel.from_pretrained(model, "phi2")
 
-tokenizer = AutoTokenizer.from_pretrained("Shrunoti09/llama2")
+
+tokenizer = AutoTokenizer.from_pretrained("phi-2")
+
 tokenizer.eos_token_id = model.config.eos_token_id
 tokenizer.pad_token = tokenizer.eos_token
 tokenizer.add_special_tokens({'pad_token': '<PAD>'})
@@ -65,7 +68,7 @@ def generate_words(section,message,file_name,tokens):
     document = Document(file_name)
     message = str(message)
     # Generate words one by one
-    text = f"<s>[INST] {message} [/INST]"
+    text = f"[INST] {message} [/INST]"
 
     inputs = tokenizer(text, return_tensors="pt")
     streamer = TextIteratorStreamer(tokenizer)
@@ -87,7 +90,7 @@ def generate_words(section,message,file_name,tokens):
             # Perform case-insensitive and punctuation-trimmed sentence comparison
             clean_sentence = str(generated_sentence).replace("\"","")
             if len(existing_sentences) == 0:
-                text_repl = f"<s>[INST] {message} [/INST]"
+                text_repl = f"[INST] {message} [/INST]"
                 clean_sentence = str(clean_sentence).replace(text_repl,"")
             if clean_sentence not in existing_sentences:
                 existing_sentences.add(clean_sentence)
@@ -96,13 +99,40 @@ def generate_words(section,message,file_name,tokens):
                 for word in splitted_sentence:            
                     yield word + " "
                     time.sleep(0.2)
+                # print(generated_sentence, end="")
 
             generated_sentence = ""
+    # generated_text = ""
+    # for new_text in streamer:
+    #     # generated_text += new_text
+
+
+    # paragraphs = document.paragraphs
+
+    # ind = sections[section]
+    # paragraphs[ind] = paragraphs[ind].clear()
+    # paragraphs[ind].text = paragraph
+    
+    # document.save(file_name)
 
     torch.cuda.empty_cache()
     gc.collect()
     yield "<END> "
+    # msgList = str(message).split(' ')
+    # for word in msgList:
+    #     yield word+" "
 
+
+
+# @socketio.on('message')
+# def handle_message(message):
+#     msgList = str(message["message"]).split(' ')
+#     for word in msgList:
+#         # yield word+" "
+#         emit(message['username'],word)
+#         time.sleep(0.2)
+#     emit(message['username'],"<END>")
+    # send(message)
 
 
 @app.route('/')
@@ -122,7 +152,7 @@ def paraphrase_sent():
     body = request.json
 
     API_URL = "https://api-inference.huggingface.co/models/tuner007/pegasus_paraphrase"
-    headers = {"Authorization": "Bearer {}".format(HF_TOKEN)}
+    headers = {"Authorization": "Bearer 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"}
 
     def query(payload):
         response = requests.post(API_URL, headers=headers, json=payload)
@@ -178,13 +208,9 @@ def convert_and_get_pdf():
 
         document.save(file_name)
 
-
-
-    # pdf_file_path = body["file_name"]+".pdf"
-    # convert(file_name, pdf_file_path)
     
     # Send the PDF file as a response
     return send_file(file_name, as_attachment=False)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0',port=8000)
+    app.run(port=5000,debug=True)
