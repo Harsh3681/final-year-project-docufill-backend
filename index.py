@@ -14,6 +14,8 @@ import requests
 import gc
 from dotenv import load_dotenv
 from docx.shared import Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
 import convertapi
 
 load_dotenv()
@@ -61,13 +63,7 @@ CORS(app,origins='*',resource={
 
 
 def generate_words(section,message,file_name,tokens):
-	
-    if not os.path.exists(file_name):
-        document = Document(r"./conference-template-a4.docx")
-        document.save(file_name)
 
-    
-    document = Document(file_name)
     message = str(message)
     # Generate words one by one
     text = f"<s>[INST] {message} [/INST]"
@@ -142,8 +138,55 @@ def paraphrase_sent():
 @app.route('/donwnloadFile',methods=['POST'])
 def download_file():
     body = request.json['data']
-
+    
+    chats = body["chats"]
     file_name = body["file_name"]+".docx"
+
+    title = body["title"]
+    type = body["type"]
+    document = Document()
+    if type == "Research Paper":
+        document = Document(r"./conference-template-a4.docx")
+        
+    paragraphs = document.paragraphs
+
+    if type == "Report":
+        document.add_heading(title, 0)
+
+    # document.save(file_name)
+    for i in chats:
+        if i["diagram"] == True:
+            imagestr = i["output"]
+            im = Image.open(BytesIO(b64decode(imagestr.split(',')[1])))
+            imgName = body["file_name"]+".png"
+            im.save(imgName)
+            # Write binary data to a file
+
+            if type == "Research Paper":
+                ind = sections["ProposedMethod"]
+                
+                run = paragraphs[ind].add_run()
+                run.add_picture(imgName,width=Inches(5))
+            else:
+                document.add_heading("Architecture", level=1)
+                document.add_picture(imgName, width=Inches(10))
+
+        else:
+            if type == "Research Paper":
+                ind = sections[i["section"]]
+                paragraphs[ind] = paragraphs[ind].clear()
+                paragraphs[ind].text = i["output"]
+                paragraphs[ind].alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                paragraph_format = paragraphs[ind].paragraph_format
+            else:
+                document.add_heading(i["section"], level=1)
+                paragraph = document.add_paragraph(i["output"])
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                paragraph_format = paragraph.paragraph_format
+                paragraph_format.left_indent = Inches(0.5)  
+
+        document.save(file_name)
+
 
     # Send the PDF file as a response
     return send_file(file_name, as_attachment=False)
@@ -155,12 +198,18 @@ def download_file():
 def convert_and_get_pdf():
     body = request.json['data']
 
+    title = body["title"]
     chats = body["chats"]
     file_name = body["file_name"]+".docx"
-
-    document = Document(r"./conference-template-a4.docx")
-
+    type = body["type"]
+    document = Document()
+    if type == "Research Paper":
+        document = Document(r"./conference-template-a4.docx")
+        
     paragraphs = document.paragraphs
+
+    if type == "Report":
+        document.add_heading(title, 0)
 
     # document.save(file_name)
     for i in chats:
@@ -170,20 +219,29 @@ def convert_and_get_pdf():
             imgName = body["file_name"]+".png"
             im.save(imgName)
             # Write binary data to a file
-            
-            ind = sections["ProposedMethod"]
-            
-            run = paragraphs[ind].add_run()
-            run.add_picture(imgName,width=Inches(5))
-
+            if type == "Research Paper":
+                ind = sections["ProposedMethod"]
+                
+                run = paragraphs[ind].add_run()
+                run.add_picture(imgName,width=Inches(5))
+            else:
+                document.add_heading("Architecture", level=1)
+                document.add_picture(imgName, width=Inches(10))
         else:       
-            ind = sections[i["section"]]
-            paragraphs[ind] = paragraphs[ind].clear()
-            paragraphs[ind].text = i["output"]
+            if type == "Research Paper":
+                ind = sections[i["section"]]
+                paragraphs[ind] = paragraphs[ind].clear()
+                paragraphs[ind].text = i["output"]
+                paragraphs[ind].alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                paragraph_format = paragraphs[ind].paragraph_format
+            else:
+                document.add_heading(i["section"], level=1)
+                paragraph = document.add_paragraph(i["output"])
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                paragraph_format = paragraph.paragraph_format
+                paragraph_format.left_indent = Inches(0.5)
 
         document.save(file_name)
-
-
 
     pdf_file_path = body["file_name"]+".pdf"
 
@@ -193,7 +251,7 @@ def convert_and_get_pdf():
     }, from_format = 'docx').save_files(pdf_file_path)
     
     # Send the PDF file as a response
-    return send_file(file_name, as_attachment=False)
+    return send_file(pdf_file_path, as_attachment=False)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0',port=8000)
