@@ -14,10 +14,11 @@ import requests
 import gc
 from dotenv import load_dotenv
 from docx.shared import Inches
-
+import convertapi
 
 load_dotenv()
 HF_TOKEN = os.getenv('HF_TOKEN')
+convertapi.api_secret = os.getenv("API_SECRET")
 
 
 sections = {
@@ -51,7 +52,11 @@ if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
 app = Flask(__name__)
-CORS(app)
+CORS(app,origins='*',resource={
+    r"/*":{
+        "origins":"*"
+    }
+})
 # socketio = SocketIO(app,cors_allowed_origins='*')
 
 
@@ -180,8 +185,12 @@ def convert_and_get_pdf():
 
 
 
-    # pdf_file_path = body["file_name"]+".pdf"
-    # convert(file_name, pdf_file_path)
+    pdf_file_path = body["file_name"]+".pdf"
+
+
+    convertapi.convert('pdf', {
+        'File': file_name
+    }, from_format = 'docx').save_files(pdf_file_path)
     
     # Send the PDF file as a response
     return send_file(file_name, as_attachment=False)

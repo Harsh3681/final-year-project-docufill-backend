@@ -14,7 +14,14 @@ from base64 import b64decode
 import requests
 import gc
 
+from dotenv import load_dotenv
 from docx.shared import Inches
+import convertapi
+
+
+load_dotenv()
+HF_TOKEN = os.getenv('HF_TOKEN')
+convertapi.api_secret = os.getenv("API_SECRET")
 
 sections = {
     "Title":0,
@@ -54,7 +61,12 @@ if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
 
 app = Flask(__name__)
-CORS(app)
+CORS(app,origins='*',resource={
+    r"/*":{
+        "origins":"*"
+    }
+})
+
 # socketio = SocketIO(app,cors_allowed_origins='*')
 
 
@@ -152,7 +164,7 @@ def paraphrase_sent():
     body = request.json
 
     API_URL = "https://api-inference.huggingface.co/models/tuner007/pegasus_paraphrase"
-    headers = {"Authorization": "Bearer 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"}
+    headers = {"Authorization": "Bearer {}".format(HF_TOKEN)}
 
     def query(payload):
         response = requests.post(API_URL, headers=headers, json=payload)
@@ -164,11 +176,37 @@ def paraphrase_sent():
     return output
 
 
-@app.route('/donwnloadFile',methods=['POST'])
+@app.route('/downloadFile',methods=['POST'])
 def download_file():
     body = request.json['data']
-
+    
+    chats = body["chats"]
     file_name = body["file_name"]+".docx"
+
+    document = Document(r"./conference-template-a4.docx")
+
+    paragraphs = document.paragraphs
+
+    # document.save(file_name)
+    for i in chats:
+        if i["diagram"] == True:
+            imagestr = i["output"]
+            im = Image.open(BytesIO(b64decode(imagestr.split(',')[1])))
+            imgName = body["file_name"]+".png"
+            im.save(imgName)
+            # Write binary data to a file
+            
+            ind = sections["ProposedMethod"]
+            
+            run = paragraphs[ind].add_run()
+            run.add_picture(imgName,width=Inches(5))
+
+        else:       
+            ind = sections[i["section"]]
+            paragraphs[ind] = paragraphs[ind].clear()
+            paragraphs[ind].text = i["output"]
+
+        document.save(file_name)
 
     # Send the PDF file as a response
     return send_file(file_name, as_attachment=False)
@@ -208,9 +246,15 @@ def convert_and_get_pdf():
 
         document.save(file_name)
 
-    
+    pdf_file_path = body["file_name"]+".pdf"
+
+
+    convertapi.convert('pdf', {
+        'File': file_name
+    }, from_format = 'docx').save_files(pdf_file_path)
+
     # Send the PDF file as a response
-    return send_file(file_name, as_attachment=False)
+    return send_file(pdf_file_path, as_attachment=False)
 
 if __name__ == '__main__':
     app.run(port=5000,debug=True)

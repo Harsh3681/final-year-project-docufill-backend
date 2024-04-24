@@ -6,3 +6,5 @@ __pycache__
 ieee.py
 xploreapi
 *.doc
+*.pdf
+*.png
