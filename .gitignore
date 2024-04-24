@@ -5,6 +5,6 @@ __pycache__
 .env
 ieee.py
 xploreapi
-*.doc
+*.docx
 *.pdf
 *.png
