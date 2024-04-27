@@ -59,11 +59,11 @@ CORS(app,origins='*',resource={
         "origins":"*"
     }
 })
-# socketio = SocketIO(app,cors_allowed_origins='*')
 
+generation_processes = {}
 
-def generate_words(section,message,file_name,tokens):
-
+def generate_words(section,message,file_name,tokens,chatID):
+    global generation_processes
     message = str(message)
     # Generate words one by one
     text = f"<s>[INST] {message} [/INST]"
@@ -77,10 +77,18 @@ def generate_words(section,message,file_name,tokens):
     thread = Thread(target=model.generate, kwargs=generation_kwargs)
     thread.start()
 
+    
+    generation_processes[chatID] = thread
+
     paragraph = ""
     existing_sentences = set()
     generated_sentence = ""
     for new_text in streamer:
+        if chatID not in generation_processes:  # Check if termination is requested for this process
+            yield "<INTR> "
+            torch.cuda.empty_cache()
+            gc.collect()
+            return
         # Ensure consistent sentence end detection
         generated_sentence += new_text
         if new_text in ".?!":  # Check for common sentence end punctuation
@@ -102,6 +110,7 @@ def generate_words(section,message,file_name,tokens):
 
     torch.cuda.empty_cache()
     gc.collect()
+    del generation_processes[chatID]
     yield "<END> "
 
 
@@ -114,8 +123,16 @@ def home():
 @app.route('/stream_words',methods=['POST'])
 def stream_words():
     body = request.json
-    return Response(generate_words(body["section"],body["prompt"],body["file_name"],body["token"]), mimetype='text/plain')
+    return Response(generate_words(body["section"],body["prompt"],body["file_name"],body["token"],body["chatID"]), mimetype='text/plain')
 
+
+
+@app.route("/interrupt",methods=['POST'])
+def interrupt_response():
+    body = request.json
+    chatID = body["chatID"]
+    del generation_processes[chatID]
+    return ""
 
 
 @app.route('/paraphrase',methods=['POST'])
@@ -152,7 +169,8 @@ def download_file():
 
     if type == "Report":
         document.add_heading(title, 0)
-
+    elif type == "Research Paper":
+        paragraphs[0].text = title
     # document.save(file_name)
     for i in chats:
         if i["diagram"] == True:
